@@ -3,15 +3,13 @@ import
 (   
     _ "github.com/lib/pq"
     "database/sql"
-    //"time"
     "log"
     "math"
     "errors"
-	//"fmt"
     "net/http"
     "regexp"
-	"strconv"
-	"strings"
+    "strconv"
+    "strings"
 )
 
 func tilePathToXYZ(path string) (TileID, error) {
@@ -34,10 +32,10 @@ func tilePathToXYZ(path string) (TileID, error) {
 	}
 	return TileID{x: uint32(x), y: uint32(y), z: uint32(z)}, nil
 }
-type LngLat struct {
-	lng float64
-	lat float64
-}
+// type LngLat struct {
+// 	lng float64
+// 	lat float64
+// }
 type TileID struct {
 	x uint32
 	y uint32
@@ -57,9 +55,17 @@ func FloatToString(input_num float64) string {
     // to convert a float number to a string
     return strconv.FormatFloat(input_num, 'f', 6, 64)
 }
-
+func isIntersect(xmin float64,ymin float64,xmax float64,ymax float64, txmin float64,tymin float64,txmax float64,tymax float64) bool {
+	
+	if( xmin> txmax || xmax<txmin || ymin> tymax || ymax<tymin){
+		return false
+	}else{
+		return true
+	}
+}
 func main(){
-    //t1 := time.Now() 
+	//t1 := time.Now() 
+	table:="pnt"
 	mux := http.NewServeMux()
 	tileBase := "/tiles/"
 	connStr := "dbname=postgis_24_sample user=postgres password=123456 host=localhost port=5433  sslmode=disable"
@@ -74,6 +80,20 @@ func main(){
 			panic(err)
 		}
 		db.SetMaxOpenConns(4) 
+		sql:="select min(ST_XMin(the_geom)),min(ST_YMin(the_geom)),max(ST_XMax(the_geom)),max(ST_YMax(the_geom)) from "+table
+		//fmt.Println(sql)
+		rows:= db.QueryRow(sql)
+		//fmt.Println(rows1)
+		//var tile []float32
+		var  txmin float64
+		var  tymin float64
+		var  txmax float64
+		var  tymax float64
+		error := rows.Scan(&txmin,&tymin,&txmax,&tymax)
+		if error != nil {
+			log.Fatal(error)
+		}
+		
 	mux.HandleFunc(tileBase, func(w http.ResponseWriter, r *http.Request) {
 		//t2 := time.Now() 
 		//log.Printf("url: %s", r.URL.Path)
@@ -86,20 +106,30 @@ func main(){
 			http.Error(w, "Invalid tile url", 400)
 			return
 		}
-		ymax :=FloatToString(tile2lat(int(xyz.y), int(xyz.z)));
-		ymin := FloatToString(tile2lat(int(xyz.y+1), int(xyz.z)));
-		xmin := FloatToString(tile2lon(int(xyz.x), int(xyz.z)));
-		xmax := FloatToString(tile2lon(int(xyz.x+1), int(xyz.z)));
+		ymax :=tile2lat(int(xyz.y), int(xyz.z))
+		ymin :=tile2lat(int(xyz.y+1), int(xyz.z))
+		xmin :=tile2lon(int(xyz.x), int(xyz.z))
+		xmax :=tile2lon(int(xyz.x+1), int(xyz.z))
+		symax :=FloatToString(ymax);
+		symin := FloatToString(ymin);
+		sxmin := FloatToString(xmin);
+		sxmax := FloatToString(xmax);
 		// fmt.Println("ymax: ", ymax)
 		// fmt.Println("ymin: ",ymin)
 		// fmt.Println("xmin : ",xmin )
 		// fmt.Println("xmax : ",xmax )
-		
-		//fmt.Println("Successfully connected!")
+		isTrue :=isIntersect(xmin,ymin,xmax,ymax, txmin,tymin,txmax,tymax)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		if(isTrue==false){
+			
+			http.Error(w, "Invalid tile url", 400)
+		}else{
+			//fmt.Println("Successfully connected!")
 		var tile []byte
-		s := []string{xmin,ymin,xmax,ymax}
+		s := []string{sxmin,symin,sxmax,symax}
 		maxmin:=strings.Join(s, ",") 
-		table:="pnt"
+		
 		//  s2 := []string{" where (x between", xmin,"and",xmax,") and ( y between",ymin,"and",ymax,")"}
 		// wmaxmin:=strings.Join(s2, " ") 
 		sql:="SELECT ST_AsMVT(tile,'points',4096,'geom') tile  FROM (SELECT w.id,w.v,ST_AsMVTGeom(w.the_geom,Box2D(ST_MakeEnvelope("+maxmin+", 4326)),4096, 0, true)	 AS geom FROM "+table+" w) AS  tile where  tile.geom is not null"
@@ -113,14 +143,17 @@ func main(){
 		//fmt.Println("tile:", tile)
 		size := cap(tile)
 		//fmt.Println("tile:", size)
-		if size== 0 {
+		
+		if size== 0 {			
 			http.Error(w, "Invalid tile url", 400)
 			return
 		}
 		w.Header().Set("Content-Type", "application/x-protobuf")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		// w.Header().Set("Access-Control-Allow-Origin", "*")
+		// w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Write(tile)
+		}
+		
 		//elapsed2 := time.Since(t2)
 		
 	})
