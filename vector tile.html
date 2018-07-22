@@ -30,9 +30,15 @@
         var tileset = 'mapbox.streets';
         var map = new mapboxgl.Map({
             container: 'map',
-            zoom: 12,
+            zoom: 11,
             center: [120.747646331787, 31.3388509750366],
-            style: 'mapbox://styles/mapbox/light-v9',
+             style: {
+                "name": "mapbox_baidu",
+                'version': 8,
+                'sources': {},
+                'layers': []
+            },
+            //style: 'mapbox://styles/mapbox/light-v9',
             hash: false
         });
 
